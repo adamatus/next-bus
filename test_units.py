@@ -1,8 +1,11 @@
 import pook
 import pytest
 import time
+import unittest
 
 from grappa import should
+
+from next_bus import *
 
 FAKE_HOST='http://fake.fake'
 ROUTES=[
@@ -112,171 +115,124 @@ TIMES_NONACTUAL=[
   ]
 
 
-@pytest.fixture
-def route_response():
-    return ROUTES
+class TestLookupRoute(unittest.TestCase):
 
-@pytest.fixture
-def direction_response():
-    return DIRS
+    @pook.on
+    def setUp(self):
+        self.route_url = FAKE_HOST+ROUTE_PATH
+        self.mock = pook.get(self.route_url, reply=200, response_json=ROUTES)
 
-@pytest.fixture
-def stops_response():
-    return STOPS
+    def test_lookup_route_returns_None_if_not_200_response(self):
+        self.mock = pook.get(self.route_url, reply=404)
+        route = lookup_route('ignored', self.route_url)
+        route | should.be.none
 
-@pytest.fixture
-def times_response():
-    return TIMES_ACTUAL
+    def test_lookup_route_returns_empty_list_if_not_found_in_response(self):
+        route = lookup_route('junk', self.route_url)
+        route | should.be.none
 
+    def test_lookup_route_returns_None_if_more_than_one_found(self):
+        route = lookup_route('METRO', self.route_url)
+        route | should.be.none
 
-from next_bus import ROUTE_PATH, lookup_route
-
-ROUTE_URL=FAKE_HOST+ROUTE_PATH
-@pook.on
-def test_lookup_route_returns_empty_list_if_not_found_in_response(route_response):
-    mock = pook.get(ROUTE_URL, reply=200, response_json=route_response)
-
-    route = lookup_route('junk', ROUTE_URL)
-    route | should.be.none
-
-@pook.on
-def test_lookup_route_returns_None_if_not_200_response():
-    mock = pook.get(ROUTE_URL, reply=404)
-
-    route = lookup_route('ignored', ROUTE_URL)
-    route | should.be.none
-
-@pook.on
-def test_lookup_route_returns_None_if_more_than_one_found(route_response):
-    mock = pook.get(ROUTE_URL, reply=200, response_json=route_response)
-
-    route = lookup_route('METRO', ROUTE_URL)
-    route | should.be.none
-@pook.on
-def test_lookup_route_returns_match(route_response):
-    mock = pook.get(ROUTE_URL, reply=200, response_json=route_response)
-
-    route = lookup_route('Brklyn Center', ROUTE_URL)
-    route | should.have.key("Description")
-    route | should.have.key("ProviderID")
+    def test_lookup_route_returns_match(self):
+        route = lookup_route('Brklyn Center', self.route_url)
+        route | should.have.key("Description")
+        route | should.have.key("ProviderID")
 
 
-from next_bus import DIR_PATH, lookup_direction
+class TestLookupDirection(unittest.TestCase):
 
-DIR_URL=FAKE_HOST+DIR_PATH
+    @pook.on
+    def setUp(self):
+        self.dir_url = FAKE_HOST+DIR_PATH
+        self.mock = pook.get(self.dir_url.format(route=ROUTES[2]['Route']), reply=200, response_json=DIRS)
 
-@pook.on
-def test_lookup_direction_returns_empty_list_if_not_found_in_response(direction_response):
-    mock = pook.get(DIR_URL+"/"+ROUTES[2]['Route'], reply=200, response_json=direction_response)
+    def test_lookup_direction_returns_None_if_not_200_response(self):
+        self.mock = pook.get(self.dir_url.format(route=ROUTES[2]['Route']), reply=404)
+        route = lookup_direction('ignored', ROUTES[2], self.dir_url)
+        route | should.be.none
 
-    route = lookup_direction('junk', ROUTES[2], DIR_URL)
-    route | should.be.none
+    def test_lookup_direction_returns_empty_list_if_not_found_in_response(self):
+        route = lookup_direction('junk', ROUTES[2], self.dir_url)
+        route | should.be.none
 
-@pook.on
-def test_lookup_direction_returns_None_if_not_200_response():
-    mock = pook.get(DIR_URL+"/"+ROUTES[2]['Route'], reply=404)
+    def test_lookup_direction_returns_None_if_more_than_one_found(self):
+        route = lookup_direction('BOUND', ROUTES[2], self.dir_url)
+        route | should.be.none
 
-    route = lookup_direction('ignored', ROUTES[2], DIR_URL)
-    route | should.be.none
+    def test_lookup_direction_returns_match(self):
+        route = lookup_direction('SOUTHBOUND', ROUTES[2], self.dir_url)
+        route | should.have.key("Value").that.should.equal("1")
 
-@pook.on
-def test_lookup_direction_returns_None_if_more_than_one_found(direction_response):
-    mock = pook.get(DIR_URL+"/"+ROUTES[2]['Route'], reply=200, response_json=direction_response)
+    def test_lookup_direction_returns_caseinsensitive_match(self):
+        self.mock = pook.get(self.dir_url.format(route=ROUTES[1]['Route']), reply=200, response_json=DIRS)
+        route = lookup_direction('north', ROUTES[1], self.dir_url)
+        route | should.have.key("Value").that.should.equal("4")
 
-    route = lookup_direction('BOUND', ROUTES[2], DIR_URL)
-    route | should.be.none
 
-@pook.on
-def test_lookup_direction_returns_match(direction_response):
-    mock = pook.get(DIR_URL+"/"+ROUTES[2]['Route'], reply=200, response_json=direction_response)
+class TestLookupStop(unittest.TestCase):
 
-    route = lookup_direction('SOUTHBOUND', ROUTES[2], DIR_URL)
-    route | should.have.key("Value").that.should.equal("1")
+    @pook.on
+    def setUp(self):
+        self.stop_url_template = FAKE_HOST+DIR_PATH
+        self.stop_url=self.stop_url_template.format(route=ROUTES[2]['Route'],direction=DIRS[1]['Value'])
+        self.mock = pook.get(self.stop_url, reply=200, response_json=STOPS)
 
-@pook.on
-def test_lookup_direction_returns_caseinsensitive_match(direction_response):
-    mock = pook.get(DIR_URL+"/"+ROUTES[1]['Route'], reply=200, response_json=direction_response)
+    def test_lookup_stop_returns_None_if_not_200_response(self):
+        self.mock = pook.get(self.stop_url, reply=404)
+        route = lookup_stop('ignored', ROUTES[2], DIRS[1], self.stop_url_template)
+        route | should.be.none
 
-    route = lookup_direction('north', ROUTES[1], DIR_URL)
-    route | should.have.key("Value").that.should.equal("4")
+    def test_lookup_stop_returns_empty_list_if_not_found_in_response(self):
+        route = lookup_stop('junk', ROUTES[2], DIRS[1], self.stop_url_template)
+        route | should.be.none
 
-from next_bus import STOP_PATH, lookup_stop
+    def test_lookup_stop_returns_None_if_more_than_one_found(self):
+        route = lookup_stop('Ave', ROUTES[2], DIRS[1], self.stop_url_template)
+        route | should.be.none
 
-STOP_URL=FAKE_HOST+STOP_PATH
+    def test_lookup_stop_returns_match(self):
+        route = lookup_stop('Brooklyn Center', ROUTES[2], DIRS[1], self.stop_url_template)
+        route | should.have.key("Value").that.should.equal("BCTC")
 
-@pook.on
-def test_lookup_stop_returns_empty_list_if_not_found_in_response(stops_response):
-    mock = pook.get(STOP_URL+"/"+ROUTES[2]['Route']+"/"+DIRS[1]['Value'], reply=200, response_json=stops_response)
 
-    route = lookup_stop('junk', ROUTES[2], DIRS[1], STOP_URL)
-    route | should.be.none
+class TestLookupTime(unittest.TestCase):
 
-@pook.on
-def test_lookup_stop_returns_None_if_not_200_response():
-    mock = pook.get(STOP_URL+"/"+ROUTES[2]['Route']+"/"+DIRS[1]['Value'], reply=404)
+    @pook.on
+    def setUp(self):
+        self.time_url_template = FAKE_HOST+TIME_PATH
+        self.time_url=self.time_url_template.format(route=ROUTES[2]['Route'],direction=DIRS[1]['Value'],stop=STOPS[2]['Value'])
 
-    route = lookup_stop('ignored', ROUTES[2], DIRS[1], STOP_URL)
-    route | should.be.none
+    def test_lookup_time_returns_None_if_not_200_response(self):
+        mock = pook.get(self.time_url, reply=404)
+        next_time = lookup_next_time('ignored', ROUTES[2], DIRS[1], STOPS[2], self.time_url_template)
+        next_time | should.be.none
 
-@pook.on
-def test_lookup_stop_returns_None_if_more_than_one_found(stops_response):
-    mock = pook.get(STOP_URL+"/"+ROUTES[2]['Route']+"/"+DIRS[1]['Value'], reply=200, response_json=stops_response)
+    def test_lookup_time_returns_None_if_no_times(self):
+        mock = pook.get(self.time_url, reply=200, response_json="[]")
+        next_time = lookup_next_time('ignored', ROUTES[2], DIRS[1], STOPS[2], self.time_url_template)
+        next_time | should.be.none
 
-    route = lookup_stop('Ave', ROUTES[2], DIRS[1], STOP_URL)
-    route | should.be.none
+    def test_lookup_time_returns_first_match(self):
+        mock = pook.get(self.time_url, reply=200, response_json=TIMES_ACTUAL)
+        next_time = lookup_next_time('ignored', ROUTES[2], DIRS[1], STOPS[2], self.time_url_template)
+        next_time | should.equal("16 Min")
 
-@pook.on
-def test_lookup_stop_returns_match(stops_response):
-    mock = pook.get(STOP_URL+"/"+ROUTES[2]['Route']+"/"+DIRS[1]['Value'], reply=200, response_json=stops_response)
+    def test_lookup_time_converts_non_actual_times(self):
+        mock = pook.get(self.time_url, reply=200, response_json=TIMES_NONACTUAL)
+        next_time = lookup_next_time('1538969940000', ROUTES[2], DIRS[1], STOPS[2], self.time_url_template)
+        next_time | should.equal("22 Min")
 
-    route = lookup_stop('Brooklyn Center', ROUTES[2], DIRS[1], STOP_URL)
-    route | should.have.key("Value").that.should.equal("BCTC")
 
-from next_bus import TIME_PATH, lookup_next_time
-
-TIME_URL=FAKE_HOST+TIME_PATH
-
-@pook.on
-def test_lookup_time_returns_None_if_not_200_response():
-    mock = pook.get(TIME_URL+"/"+ROUTES[2]['Route']+"/"+DIRS[1]['Value']+"/"+STOPS[2]['Value'], reply=404)
-
-    next_time = lookup_next_time('ignored', ROUTES[2], DIRS[1], STOPS[2], TIME_URL)
-    next_time | should.be.none
-
-@pook.on
-def test_lookup_time_returns_None_if_no_times(times_response):
-    mock = pook.get(TIME_URL+"/"+ROUTES[2]['Route']+"/"+DIRS[1]['Value']+"/"+STOPS[2]['Value'],
-            reply=200, response_json="[]")
-
-    next_time = lookup_next_time('ignored', ROUTES[2], DIRS[1], STOPS[2], TIME_URL)
-    next_time | should.be.none
-
-@pook.on
-def test_lookup_time_returns_first_match(times_response):
-    mock = pook.get(TIME_URL+"/"+ROUTES[2]['Route']+"/"+DIRS[1]['Value']+"/"+STOPS[2]['Value'],
-            reply=200, response_json=TIMES_ACTUAL)
-
-    next_time = lookup_next_time('ignored', ROUTES[2], DIRS[1], STOPS[2], TIME_URL)
-    next_time | should.equal("16 Min")
-
-@pook.on
-def test_lookup_time_converts_non_actual_times(times_response):
-    mock = pook.get(TIME_URL+"/"+ROUTES[2]['Route']+"/"+DIRS[1]['Value']+"/"+STOPS[2]['Value'],
-            reply=200, response_json=TIMES_NONACTUAL)
-
-    next_time = lookup_next_time('1538969940000', ROUTES[2], DIRS[1], STOPS[2], TIME_URL)
-    next_time | should.equal("22 Min")
-
-from next_bus import compute_time_to_departure, extract_date_time
+# Simple helper method tests below
 
 def test_extract():
     extracted = extract_date_time("\\/Date(1538971260000-0500)\\/")
-
     extracted | should.equal("1538971260000")
 
 def test_compute_time_to_depature_with_provided_datetime():
     next_time = compute_time_to_departure("\\/Date(1538971260000-0500)\\/", '1538969940000')
-
     next_time | should.equal("22 Min")
 
 def test_compute_time_to_depature_without_provided_datetime():
@@ -287,5 +243,4 @@ def test_compute_time_to_depature_without_provided_datetime():
     then = now + (20 * 60 * 1000)
 
     next_time = compute_time_to_departure("\\/Date("+str(then)+"-0500)\\/", None)
-
     next_time | should.equal("20 Min")

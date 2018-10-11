@@ -30,7 +30,7 @@ def setup_routes_happy_path(live_mock):
 
 
 def setup_directions_happy_path(live_mock, route):
-    live_mock.when('GET ' + DIR_PATH + "/" + route).reply("""[
+    live_mock.when('GET ' + DIR_PATH.format(route=route)).reply("""[
       {
         "Text": "NORTHBOUND",
         "Value": "4"
@@ -43,7 +43,7 @@ def setup_directions_happy_path(live_mock, route):
 
 
 def setup_stops_happy_path(live_mock, route, direction):
-    live_mock.when('GET ' + STOP_PATH + "/" + route + "/" + direction).reply("""[
+    live_mock.when('GET ' + STOP_PATH.format(route=route,direction=direction)).reply("""[
       {
         "Text": "44th Ave  and Fremont Ave ",
         "Value": "44FM"
@@ -59,7 +59,7 @@ def setup_stops_happy_path(live_mock, route, direction):
     ]""", headers={'Content-Type': 'application/json'}, status=200)
 
 def setup_times_actual_true_happy_path(live_mock, route, direction, stop):
-    live_mock.when('GET ' + TIME_PATH + "/" + route + "/" + direction + "/" + stop).reply("""[
+    live_mock.when('GET ' + TIME_PATH.format(route=route,direction=direction,stop=stop)).reply("""[
       {
         "Actual": true,
         "BlockNumber": 1078,
@@ -91,7 +91,7 @@ def setup_times_actual_true_happy_path(live_mock, route, direction, stop):
     ]""", headers={'Content-Type': 'application/json'}, status=200)
 
 def setup_times_actual_false_happy_path(live_mock, route, direction, stop):
-    live_mock.when('GET ' + TIME_PATH + "/" + route + "/" + direction + "/" + stop).reply("""[
+    live_mock.when('GET ' + TIME_PATH.format(route=route,direction=direction,stop=stop)).reply("""[
       {
         "Actual": false,
         "BlockNumber": 1078,
@@ -185,7 +185,7 @@ def test_bad_direction(cli_runner):
 def test_direction_endpoint_returns_non_200(cli_runner):
     mock.reset()
     setup_routes_happy_path(mock)
-    mock.when('GET ' + DIR_PATH + "/5").reply(status=404, times=FOREVER)
+    mock.when('GET ' + DIR_PATH.format(route='5')).reply(status=404, times=FOREVER)
 
     result = cli_runner(SCRIPT_NAME, '-d 20181007234100-05:00', '-h ' + mock.pretend_url,
                         '5 - Brklyn Center', 'Brooklyn Center', 'south')
@@ -204,13 +204,13 @@ def test_multiple_directions(cli_runner):
 
     result | should.have.key('returncode').that.should.equal(1)
     result | should.have.key('stderr')
-    result['stderr'] | should.equal('ERROR: More than one direction matched. Please refine direction\n')
+    result['stderr'] | should.equal('ERROR: More than one Direction found. Please refine Direction\n')
 
 def test_stop_endpoint_returns_non_200(cli_runner):
     mock.reset()
     setup_routes_happy_path(mock)
     setup_directions_happy_path(mock, '5')
-    mock.when('GET ' + STOP_PATH + "/5/1").reply(status=404, times=FOREVER)
+    mock.when('GET ' + STOP_PATH.format(route=5,direction=1)).reply(status=404, times=FOREVER)
 
     result = cli_runner(SCRIPT_NAME, '-d 20181007234100-05:00', '-h ' + mock.pretend_url,
                         '5 - Brklyn Center', 'Brooklyn Center', 'south')
@@ -237,7 +237,7 @@ def test_times_endpoint_returns_non_200(cli_runner):
     setup_routes_happy_path(mock)
     setup_directions_happy_path(mock, '5')
     setup_stops_happy_path(mock, '5', '1')
-    mock.when('GET ' + TIME_PATH + "/5/1/7SOL").reply(status=404, times=FOREVER)
+    mock.when('GET ' + TIME_PATH.format(route='5',direction='1',stop="7SOL")).reply(status=404, times=FOREVER)
 
     result = cli_runner(SCRIPT_NAME, '-d 20181007234100-05:00', '-h ' + mock.pretend_url,
                         '5 - Brklyn Center', 'Brooklyn Center', 'south')
